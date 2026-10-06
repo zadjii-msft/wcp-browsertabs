@@ -16,21 +16,32 @@ internal sealed partial class WcpBrowserTabsPage : ListPage
     private static readonly TimeSpan MinimumRefreshInterval = TimeSpan.FromSeconds(2);
 
     private readonly Func<IReadOnlyList<BrowserTab>> getTabs;
+    private readonly Func<IReadOnlyList<BrowserTab>, IReadOnlyDictionary<BrowserTab, IconInfo>> getIcons;
     private readonly object refreshLock = new();
     private IReadOnlyList<BrowserTab> tabs = [];
+    private IReadOnlyDictionary<BrowserTab, IconInfo> tabIcons = new Dictionary<BrowserTab, IconInfo>();
     private DateTimeOffset lastRefreshUtc = DateTimeOffset.MinValue;
     private Task? refreshTask;
 
     public WcpBrowserTabsPage()
-        : this(BrowserTabDiscoveryService.GetTabs)
+        : this(BrowserTabDiscoveryService.GetTabs, BrowserTabIconProvider.Shared.GetIcons)
     {
     }
 
     internal WcpBrowserTabsPage(Func<IReadOnlyList<BrowserTab>> getTabs)
+        : this(getTabs, _ => new Dictionary<BrowserTab, IconInfo>())
+    {
+    }
+
+    internal WcpBrowserTabsPage(
+        Func<IReadOnlyList<BrowserTab>> getTabs,
+        Func<IReadOnlyList<BrowserTab>, IReadOnlyDictionary<BrowserTab, IconInfo>> getIcons)
     {
         ArgumentNullException.ThrowIfNull(getTabs);
+        ArgumentNullException.ThrowIfNull(getIcons);
 
         this.getTabs = getTabs;
+        this.getIcons = getIcons;
         Icon = IconHelpers.FromRelativePath("Assets\\StoreLogo.png");
         Title = "Browser Tabs";
         Name = "Open";
@@ -47,7 +58,7 @@ internal sealed partial class WcpBrowserTabsPage : ListPage
     {
         EnsureRefreshStarted();
 
-        var currentTabs = GetTabsSnapshot();
+        var (currentTabs, currentIcons) = GetTabsSnapshot();
 
         if (currentTabs.Length == 0)
         {
@@ -62,17 +73,18 @@ internal sealed partial class WcpBrowserTabsPage : ListPage
                 Title = tab.TabTitle,
                 Subtitle = $"{tab.Browser} - {tab.WindowTitle}",
                 Tags = GetTags(tab),
+                Icon = currentIcons.TryGetValue(tab, out var icon) ? icon : null,
             });
         }
 
         return [.. items];
     }
 
-    private BrowserTab[] GetTabsSnapshot()
+    private (BrowserTab[] Tabs, IReadOnlyDictionary<BrowserTab, IconInfo> Icons) GetTabsSnapshot()
     {
         lock (refreshLock)
         {
-            return [.. tabs];
+            return ([.. tabs], tabIcons);
         }
     }
 
@@ -110,11 +122,25 @@ internal sealed partial class WcpBrowserTabsPage : ListPage
             // Keep the previous snapshot if discovery fails.
         }
 
+        IReadOnlyDictionary<BrowserTab, IconInfo>? refreshedIcons = null;
+        if (refreshedTabs is not null)
+        {
+            try
+            {
+                refreshedIcons = await Task.Run(() => getIcons(refreshedTabs)).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Tabs are still useful without icons.
+            }
+        }
+
         lock (refreshLock)
         {
             if (refreshedTabs is not null)
             {
                 tabs = refreshedTabs;
+                tabIcons = refreshedIcons ?? new Dictionary<BrowserTab, IconInfo>();
             }
 
             lastRefreshUtc = DateTimeOffset.UtcNow;

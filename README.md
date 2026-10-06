@@ -25,7 +25,7 @@ Browser Tabs is not a standalone app. It is intentionally hidden from the normal
 
 ## Privacy
 
-Browser tab discovery runs locally on your device through Windows UI Automation. Browser Tabs does not send browser tab titles, browsing activity, account information, or other personal data to a remote service.
+Browser tab discovery runs locally on your device through Windows UI Automation. To show each tab's site icon, Browser Tabs reads local copies of the browser profile history and favicon databases. Browser Tabs does not send browser tab titles, browsing activity, account information, or other personal data to a remote service.
 
 See [PRIVACY.md](PRIVACY.md).
 

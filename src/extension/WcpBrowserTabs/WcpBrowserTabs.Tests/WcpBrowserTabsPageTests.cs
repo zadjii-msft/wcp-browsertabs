@@ -1,4 +1,5 @@
 using Microsoft.CommandPalette.Extensions;
+using Microsoft.CommandPalette.Extensions.Toolkit;
 using Xunit;
 
 namespace WcpBrowserTabs.Tests;
@@ -63,6 +64,34 @@ public sealed class WcpBrowserTabsPageTests
         Assert.Contains(itemsAfterSearchChange, item => string.Equals(item.Title, "Alpha Docs", StringComparison.Ordinal));
         Assert.Contains(itemsAfterSearchChange, item => string.Equals(item.Title, "Beta Notes", StringComparison.Ordinal));
         Assert.Equal(1, Volatile.Read(ref discoveryCalls));
+    }
+
+    [Fact]
+    public async Task GetItemsUsesResolvedTabIcons()
+    {
+        var alpha = Tab("Chrome", "Research Window", "Alpha Docs");
+        var beta = Tab("Edge", "Work Window", "Beta Notes");
+        var alphaIcon = new IconInfo("\uE774");
+        var page = new WcpBrowserTabsPage(
+            () => [alpha, beta],
+            tabs => tabs.Where(tab => tab == alpha).ToDictionary(tab => tab, _ => alphaIcon));
+
+        var items = await WaitForItemsAsync(page, expectedCount: 2);
+
+        Assert.Same(alphaIcon, items.Single(item => item.Title == "Alpha Docs").Icon);
+        Assert.Null(items.Single(item => item.Title == "Beta Notes").Icon);
+    }
+
+    [Fact]
+    public async Task GetItemsStillShowsTabsWhenIconResolutionFails()
+    {
+        var page = new WcpBrowserTabsPage(
+            () => [Tab("Chrome", "Research Window", "Alpha Docs")],
+            _ => throw new InvalidOperationException("boom"));
+
+        var items = await WaitForItemsAsync(page, expectedCount: 1);
+
+        Assert.Equal("Alpha Docs", Assert.Single(items).Title);
     }
 
     private static async Task<IListItem[]> WaitForItemsAsync(WcpBrowserTabsPage page, int expectedCount)
